@@ -1,215 +1,151 @@
-# Repository Guidelines
+# OpenClaw 에이전트 가이드
 
-- Repo: https://github.com/openclaw/openclaw
-- In chat replies, file references must be repo-root relative only (example: `extensions/bluebubbles/src/channel.ts:80`); never absolute paths or `~/...`.
-- Do not edit files covered by security-focused `CODEOWNERS` rules unless a listed owner explicitly asked for the change or is already reviewing it with you. Treat those paths as restricted surfaces, not drive-by cleanup.
+- 저장소: `https://github.com/openclaw/openclaw`
+- 이 루트 파일이 이 저장소의 주요 에이전트 지침 파일이다. `.cursor/rules/**`, `.cursorrules`, `.github/copilot-instructions.md`는 존재하지 않는다.
+- 채팅 답변에서는 항상 저장소 루트 기준 상대 경로만 사용한다. 예: `src/commands/onboard-search.test.ts:42`
+- 제한적인 `CODEOWNERS` 규칙이 적용되는 보안 민감 파일은, 해당 소유자가 명시적으로 요청했거나 이미 참여 중인 경우가 아니면 수정하지 않는다.
 
-## Project Structure & Module Organization
+## 프로젝트 구조
 
-- Source code: `src/` (CLI wiring in `src/cli`, commands in `src/commands`, web provider in `src/provider-web.ts`, infra in `src/infra`, media pipeline in `src/media`).
-- Tests: colocated `*.test.ts`.
-- Docs: `docs/` (images, queue, Pi config). Built output lives in `dist/`.
-- Nomenclature: use "plugin" / "plugins" in docs, UI, changelogs, and contributor guidance. `extensions/*` remains the internal directory/package path to avoid repo-wide churn from a rename.
-- Bundled plugin naming: for repo-owned workspace plugins, keep the canonical plugin id aligned across `openclaw.plugin.json:id`, `extensions/<id>` by default, and package names anchored to the same id (`@openclaw/<id>` or approved suffix forms like `-provider`, `-plugin`, `-speech`, `-sandbox`, `-media-understanding`). Keep `openclaw.install.npmSpec` equal to the package name and `openclaw.channel.id` equal to the plugin id when present. Exceptions must be explicit and covered by the repo invariant test.
-- Plugins: live under `extensions/*` (workspace packages). Keep plugin-only deps in the extension `package.json`; do not add them to the root `package.json` unless core uses them.
-- Plugins: install runs `npm install --omit=dev` in plugin dir; runtime deps must live in `dependencies`. Avoid `workspace:*` in `dependencies` (npm install breaks); put `openclaw` in `devDependencies` or `peerDependencies` instead (runtime resolves `openclaw/plugin-sdk` via jiti alias).
-- Import boundaries: extension production code should treat `openclaw/plugin-sdk/*` plus local `api.ts` / `runtime-api.ts` barrels as the public surface. Do not import core `src/**`, `src/plugin-sdk-internal/**`, or another extension's `src/**` directly.
-- Installers served from `https://openclaw.ai/*`: live in the sibling repo `../openclaw.ai` (`public/install.sh`, `public/install-cli.sh`, `public/install.ps1`).
-- Messaging channels: always consider **all** built-in + extension channels when refactoring shared logic (routing, allowlists, pairing, command gating, onboarding, docs).
-  - Core channel docs: `docs/channels/`
-  - Core channel code: `src/telegram`, `src/discord`, `src/slack`, `src/signal`, `src/imessage`, `src/web` (WhatsApp web), `src/channels`, `src/routing`
-  - Extensions (channel plugins): `extensions/*` (e.g. `extensions/msteams`, `extensions/matrix`, `extensions/zalo`, `extensions/zalouser`, `extensions/voice-call`)
-- When adding channels/extensions/apps/docs, update `.github/labeler.yml` and create matching GitHub labels (use existing channel/extension label colors).
+- 핵심 TypeScript 소스는 `src/`에 있다.
+- CLI 연결 코드는 `src/cli`, 명령 구현은 `src/commands`에 있다.
+- 공용 인프라는 `src/infra`, 미디어 파이프라인은 `src/media`에 있다.
+- 워크스페이스 플러그인은 `extensions/*`에 있다.
+- 테스트는 보통 소스와 같은 위치의 `*.test.ts`, 엔드투엔드 테스트는 `*.e2e.test.ts`를 사용한다.
+- 문서는 `docs/`, 빌드 산출물은 `dist/`에 있다.
+- UI 코드는 `ui/`, 모바일/데스크톱 앱은 `apps/`에 있다.
 
-## Docs Linking (Mintlify)
+## 런타임과 패키지 매니저
 
-- Docs are hosted on Mintlify (docs.openclaw.ai).
-- Internal doc links in `docs/**/*.md`: root-relative, no `.md`/`.mdx` (example: `[Config](/configuration)`).
-- When working with documentation, read the mintlify skill.
-- For docs, UI copy, and picker lists, order services/providers alphabetically unless the section is explicitly describing runtime behavior (for example auto-detection or execution order).
-- Section cross-references: use anchors on root-relative paths (example: `[Hooks](/configuration#hooks)`).
-- Doc headings and anchors: avoid em dashes and apostrophes in headings because they break Mintlify anchor links.
-- When the user asks for links, reply with full `https://docs.openclaw.ai/...` URLs (not root-relative).
-- When you touch docs, end the reply with the `https://docs.openclaw.ai/...` URLs you referenced.
-- README (GitHub): keep absolute docs URLs (`https://docs.openclaw.ai/...`) so links work on GitHub.
-- Docs content must be generic: no personal device names/hostnames/paths; use placeholders like `user@gateway-host` and “gateway host”.
+- Node `>=22.16.0`을 사용한다. README 기준 권장 버전은 Node 24이다.
+- 기본 패키지 매니저는 `pnpm@10.32.1`이다.
+- `bun`으로 직접 TypeScript를 실행할 수는 있지만, 저장소 스크립트는 `pnpm` 기준으로 정의되어 있다.
+- 의존성이 없으면 먼저 `pnpm install`을 실행한 뒤, 실패했던 동일 명령을 한 번 더 재시도한다.
 
-## Docs i18n (zh-CN)
+## 자주 쓰는 명령
 
-- `docs/zh-CN/**` is generated; do not edit unless the user explicitly asks.
-- Pipeline: update English docs → adjust glossary (`docs/.i18n/glossary.zh-CN.json`) → run `scripts/docs-i18n` → apply targeted fixes only if instructed.
-- Before rerunning `scripts/docs-i18n`, add glossary entries for any new technical terms, page titles, or short nav labels that must stay in English or use a fixed translation (for example `Doctor` or `Polls`).
-- `pnpm docs:check-i18n-glossary` enforces glossary coverage for changed English doc titles and short internal doc labels before translation reruns.
-- Translation memory: `docs/.i18n/zh-CN.tm.jsonl` (generated).
-- See `docs/.i18n/README.md`.
-- The pipeline can be slow/inefficient; if it’s dragging, ping @jospalmbier on Discord instead of hacking around it.
+- 의존성 설치: `pnpm install`
+- 개발용 CLI 실행: `pnpm openclaw ...`
+- 메인 개발 진입점: `pnpm dev`
+- Gateway watch 루프: `pnpm gateway:watch`
+- 전체 빌드: `pnpm build`
+- TypeScript 검사: `pnpm tsgo`
+- 전체 저장소 검사: `pnpm check`
+- 린트만 실행: `pnpm lint`
+- 린트 자동 수정: `pnpm lint:fix`
+- 포맷 검사: `pnpm format:check`
+- 포맷 적용: `pnpm format` 또는 `pnpm format:fix`
+- 전체 테스트 러너: `pnpm test`
+- 커버리지: `pnpm test:coverage`
+- 빠른 유닛 테스트: `pnpm test:fast`
+- Gateway 집중 테스트: `pnpm test:gateway`
+- E2E 테스트: `pnpm test:e2e`
+- UI 테스트: `pnpm test:ui`
+- 문서 검사: `pnpm check:docs`
 
-## exe.dev VM ops (general)
+## 단일 테스트 실행 방식
 
-- Access: stable path is `ssh exe.dev` then `ssh vm-name` (assume SSH key already set).
-- SSH flaky: use exe.dev web terminal or Shelley (web agent); keep a tmux session for long ops.
-- Update: `sudo npm i -g openclaw@latest` (global install needs root on `/usr/lib/node_modules`).
-- Config: use `openclaw config set ...`; ensure `gateway.mode=local` is set.
-- Discord: store raw token only (no `DISCORD_BOT_TOKEN=` prefix).
-- Restart: stop old gateway and run:
-  `pkill -9 -f openclaw-gateway || true; nohup openclaw gateway run --bind loopback --port 18789 --force > /tmp/openclaw-gateway.log 2>&1 &`
-- Verify: `openclaw channels status --probe`, `ss -ltnp | rg 18789`, `tail -n 120 /tmp/openclaw-gateway.log`.
+- 우선 사용하는 타깃 테스트 패턴: `pnpm test -- <path-or-filter> [vitest args...]`
+- 파일 기준 예시: `pnpm test -- src/commands/onboard-search.test.ts`
+- 파일 + 테스트 이름 예시: `pnpm test -- src/commands/onboard-search.test.ts -t "shows registered plugin providers"`
+- 변경된 테스트만 실행: `pnpm test -- --changed origin/main`
+- 기본값으로 raw `pnpm vitest run ...`를 사용하지 않는다. `scripts/test-parallel.mjs` 래퍼는 의도된 진입점이다.
+- 유닛 테스트만 빠르게 돌릴 때는 `pnpm test:fast`를 사용하며, 내부적으로 `vitest.unit.config.ts`를 쓴다.
+- Gateway 전용 테스트는 `pnpm test:gateway`를 사용하며, 내부적으로 `vitest.gateway.config.ts --pool=forks`를 쓴다.
+- UI 전용 작업은 필요에 따라 `pnpm test:ui`와 `pnpm --dir ui test`를 사용한다.
 
-## Build, Test, and Development Commands
+## 검증 기준
 
-- Runtime baseline: Node **22+** (keep Node + Bun paths working).
-- Install deps: `pnpm install`
-- If deps are missing (for example `node_modules` missing, `vitest not found`, or `command not found`), run the repo’s package-manager install command (prefer lockfile/README-defined PM), then rerun the exact requested command once. Apply this to test/build/lint/typecheck/dev commands; if retry still fails, report the command and first actionable error.
-- Pre-commit hooks: `prek install` (runs same checks as CI)
-- Also supported: `bun install` (keep `pnpm-lock.yaml` + Bun patching in sync when touching deps/patches).
-- Prefer Bun for TypeScript execution (scripts, dev, tests): `bun <file.ts>` / `bunx <tool>`.
-- Run CLI in dev: `pnpm openclaw ...` (bun) or `pnpm dev`.
-- Node remains supported for running built output (`dist/*`) and production installs.
-- Mac packaging (dev): `scripts/package-mac-app.sh` defaults to current arch.
-- Type-check/build: `pnpm build`
-- TypeScript checks: `pnpm tsgo`
-- Lint/format: `pnpm check`
-- Format check: `pnpm format` (oxfmt --check)
-- Format fix: `pnpm format:fix` (oxfmt --write)
-- Tests: `pnpm test` (vitest); coverage: `pnpm test:coverage`
-- Generated baseline artifacts live together under `docs/.generated/`.
-- Config schema drift uses `pnpm config:docs:gen` / `pnpm config:docs:check`.
-- Plugin SDK API drift uses `pnpm plugin-sdk:api:gen` / `pnpm plugin-sdk:api:check`.
-- If you change config schema/help or the public Plugin SDK surface, update the matching baseline artifact and keep the two drift-check flows adjacent in scripts/workflows/docs guidance rather than inventing a third pattern.
-- For narrowly scoped changes, prefer narrowly scoped tests that directly validate the touched behavior. If no meaningful scoped test exists, say so explicitly and use the next most direct validation available.
-- Preferred landing bar for pushes to `main`: `pnpm check` and `pnpm test`, with a green result when feasible.
-- Scoped tests prove the change itself. `pnpm test` remains the default `main` landing bar; scoped tests do not replace full-suite gates by default.
-- Hard gate: if the change can affect build output, packaging, lazy-loading/module boundaries, or published surfaces, `pnpm build` MUST be run and MUST pass before pushing `main`.
-- Default rule: do not commit or push with failing format, lint, type, build, or required test checks when those failures are caused by the change or plausibly related to the touched surface.
-- For narrowly scoped changes, if unrelated failures already exist on latest `origin/main`, state that clearly, report the scoped tests you ran, and ask before broadening scope into unrelated fixes or landing despite those failures.
-- Do not use scoped tests as permission to ignore plausibly related failures.
+- 로직을 바꿨다면 먼저 가장 직접적인 범위의 테스트를 실행하고, 영향 범위가 넓으면 점진적으로 검증 범위를 넓힌다.
+- 빌드 산출물, 패키징, lazy-loading, 모듈 경계, 배포 표면을 건드렸다면 `pnpm build`가 반드시 통과해야 한다.
+- `main`으로 들어갈 가능성이 있는 변경은 기본적으로 `pnpm check`와 `pnpm test`까지 통과하는 수준을 목표로 한다.
+- 좁은 범위 테스트가 통과했다고 해서 관련 있어 보이는 다른 실패를 무시하지 않는다.
+- 현재 `main`에 이미 관련 없는 실패가 있다면 숨기지 말고 명확하게 언급한다.
+- 로컬 Vitest가 메모리 압박을 받으면 `OPENCLAW_TEST_PROFILE=low OPENCLAW_TEST_SERIAL_GATEWAY=1 pnpm test`를 사용한다.
 
-## Coding Style & Naming Conventions
+## 언어와 포맷팅
 
-- Language: TypeScript (ESM). Prefer strict typing; avoid `any`.
-- Formatting/linting via Oxlint and Oxfmt.
-- Never add `@ts-nocheck` and do not disable `no-explicit-any`; fix root causes and update Oxlint/Oxfmt config only when required.
-- Dynamic import guardrail: do not mix `await import("x")` and static `import ... from "x"` for the same module in production code paths. If you need lazy loading, create a dedicated `*.runtime.ts` boundary (that re-exports from `x`) and dynamically import that boundary from lazy callers only.
-- Dynamic import verification: after refactors that touch lazy-loading/module boundaries, run `pnpm build` and check for `[INEFFECTIVE_DYNAMIC_IMPORT]` warnings before submitting.
-- Extension SDK self-import guardrail: inside an extension package, do not import that same extension via `openclaw/plugin-sdk/<extension>` from production files. Route internal imports through a local barrel such as `./api.ts` or `./runtime-api.ts`, and keep the `plugin-sdk/<extension>` path as the external contract only.
-- Extension package boundary guardrail: inside `extensions/<id>/**`, do not use relative imports/exports that resolve outside that same `extensions/<id>` package root. If shared code belongs in the plugin SDK, import `openclaw/plugin-sdk/<subpath>` instead of reaching into `src/plugin-sdk/**` or other repo paths via `../`.
-- Extension API surface rule: `openclaw/plugin-sdk/<subpath>` is the only public cross-package contract for extension-facing SDK code. If an extension needs a new seam, add a public subpath first; do not reach into `src/plugin-sdk/**` by relative path.
-- Never share class behavior via prototype mutation (`applyPrototypeMixins`, `Object.defineProperty` on `.prototype`, or exporting `Class.prototype` for merges). Use explicit inheritance/composition (`A extends B extends C`) or helper composition so TypeScript can typecheck.
-- If this pattern is needed, stop and get explicit approval before shipping; default behavior is to split/refactor into an explicit class hierarchy and keep members strongly typed.
-- In tests, prefer per-instance stubs over prototype mutation (`SomeClass.prototype.method = ...`) unless a test explicitly documents why prototype-level patching is required.
-- Add brief code comments for tricky or non-obvious logic.
-- Keep files concise; extract helpers instead of “V2” copies. Use existing patterns for CLI options and dependency injection via `createDefaultDeps`.
-- Aim to keep files under ~700 LOC; guideline only (not a hard guardrail). Split/refactor when it improves clarity or testability.
-- Naming: use **OpenClaw** for product/app/docs headings; use `openclaw` for CLI command, package/binary, paths, and config keys.
-- Written English: use American spelling and grammar in code, comments, docs, and UI strings (e.g. "color" not "colour", "behavior" not "behaviour", "analyze" not "analyse").
+- 기본 언어는 ESM 모듈 기반 TypeScript다.
+- 기존 포맷을 따른다. 저장소는 `oxfmt`와 `oxlint`를 사용한다.
+- 엄격한 타입을 유지한다. `any`, `@ts-ignore`, `@ts-nocheck`는 피한다.
+- 억제 주석보다 명시적 타입과 좁은 union 타입을 선호한다.
+- 주석은 꼭 필요한 비자명한 로직에만 짧게 쓴다.
+- 코드, 문서, 주석, UI 문자열은 미국식 영어를 사용한다.
+- 제품/앱/문서 이름은 `OpenClaw`, CLI/패키지/경로/설정 키는 `openclaw`를 사용한다.
 
-## Release / Advisory Workflows
+## import 와 모듈 경계
 
-- Use `$openclaw-release-maintainer` at `.agents/skills/openclaw-release-maintainer/SKILL.md` for release naming, version coordination, release auth, and changelog-backed release-note workflows.
-- Use `$openclaw-ghsa-maintainer` at `.agents/skills/openclaw-ghsa-maintainer/SKILL.md` for GHSA advisory inspection, patch/publish flow, private-fork checks, and GHSA API validation.
-- Release and publish remain explicit-approval actions even when using the skill.
+- 수정하기 전에 주변 파일의 import 스타일을 먼저 맞춘다.
+- 프로덕션 경로에서 같은 모듈에 대해 static import와 `await import()`를 섞지 않는다.
+- lazy loading이 필요하면 전용 `*.runtime.ts` 경계를 만들고, 그 경계를 동적 import 한다.
+- lazy-loading 리팩터링 후에는 `pnpm build`를 실행하고 `[INEFFECTIVE_DYNAMIC_IMPORT]` 경고가 없는지 확인한다.
+- `extensions/<id>/**` 내부에서는 해당 패키지 루트 바깥으로 나가는 상대 import를 사용하지 않는다.
+- 확장 production 코드는 `openclaw/plugin-sdk/*`와 로컬 `api.ts` 또는 `runtime-api.ts` 배럴만 공개 표면으로 취급해야 한다.
+- 확장 production 코드에서 core `src/**`, `src/plugin-sdk-internal/**`, 다른 확장의 `src/**`를 import 하지 않는다.
+- 확장에 새 경계면이 필요하면 먼저 `openclaw/plugin-sdk/<subpath>` 공개 export를 추가한다.
 
-## Testing Guidelines
+## 플러그인과 채널 규칙
 
-- Framework: Vitest with V8 coverage thresholds (70% lines/branches/functions/statements).
-- Naming: match source names with `*.test.ts`; e2e in `*.e2e.test.ts`.
-- When tests need example Anthropic/OpenAI model constants, prefer `sonnet-4.6` and `gpt-5.4`; update older Anthropic/GPT examples when you touch those tests.
-- Run `pnpm test` (or `pnpm test:coverage`) before pushing when you touch logic.
-- Write tests to clean up timers, env, globals, mocks, sockets, temp dirs, and module state so `--isolate=false` stays green.
-- Agents MUST NOT modify baseline, inventory, ignore, snapshot, or expected-failure files to silence failing checks without explicit approval in this chat.
-- For targeted/local debugging, keep using the wrapper: `pnpm test -- <path-or-filter> [vitest args...]` (for example `pnpm test -- src/commands/onboard-search.test.ts -t "shows registered plugin providers"`); do not default to raw `pnpm vitest run ...` because it bypasses wrapper config/profile/pool routing.
-- Do not set test workers above 16; tried already.
-- Do not reintroduce Vitest VM pools by default without fresh green evidence on current `main`; keep CI on `forks`.
-- If local Vitest runs cause memory pressure (common on non-Mac-Studio hosts), use `OPENCLAW_TEST_PROFILE=low OPENCLAW_TEST_SERIAL_GATEWAY=1 pnpm test` for land/gate runs.
-- Live tests (real keys): `OPENCLAW_LIVE_TEST=1 pnpm test:live` (OpenClaw-only) or `LIVE=1 pnpm test:live` (includes provider live tests). Docker: `pnpm test:docker:live-models`, `pnpm test:docker:live-gateway`. Onboarding Docker E2E: `pnpm test:docker:onboard`.
-- Full kit + what’s covered: `docs/help/testing.md`.
-- Changelog: user-facing changes only; no internal/meta notes (version alignment, appcast reminders, release process).
-- Changelog placement: in the active version block, append new entries to the end of the target section (`### Changes` or `### Fixes`); do not insert new entries at the top of a section.
-- Changelog attribution: use at most one contributor mention per line; prefer `Thanks @author` and do not also add `by @author` on the same entry.
-- Pure test additions/fixes generally do **not** need a changelog entry unless they alter user-facing behavior or the user asks for one.
-- Mobile: before using a simulator, check for connected real devices (iOS + Android) and prefer them when available.
+- 디렉터리가 여전히 `extensions/*`여도 문서/UI/체인지로그에서는 `plugin`이라는 용어를 사용한다.
+- 별도 예외가 없으면 `openclaw.plugin.json:id`, `extensions/<id>`, 패키지 이름 사이의 번들 플러그인 ID를 일치시킨다.
+- 런타임 플러그인 의존성은 core도 필요하지 않는 한 루트가 아니라 확장 패키지에 둔다.
+- 확장 런타임 `dependencies`에 `workspace:*`를 쓰지 말고, `openclaw`에는 `devDependencies` 또는 `peerDependencies`를 선호한다.
+- 공용 채널 로직을 리팩터링할 때는 내장 채널과 확장 채널을 함께 고려한다.
+- 채널, 확장, 앱, 문서를 추가하면 `.github/labeler.yml`과 대응하는 GitHub 라벨도 함께 업데이트한다.
 
-## Commit & Pull Request Guidelines
+## 코드 구조 선호사항
 
-- Use `$openclaw-pr-maintainer` at `.agents/skills/openclaw-pr-maintainer/SKILL.md` for maintainer PR triage, review, close, search, and landing workflows.
-- This includes auto-close labels, bug-fix evidence gates, GitHub comment/search footguns, and maintainer PR decision flow.
-- For the repo's end-to-end maintainer PR workflow, use `$openclaw-pr-maintainer` at `.agents/skills/openclaw-pr-maintainer/SKILL.md`.
+- `V2` 복사본이나 큰 중복 분기보다 작은 헬퍼를 선호한다.
+- CLI 명령 연결을 건드릴 때는 기존 `createDefaultDeps` 기반 의존성 주입 패턴을 사용한다.
+- 파일은 적당히 작게 유지하고, 가독성이나 테스트성이 좋아지면 분리한다.
+- 공용 동작을 위해 prototype을 변형하지 않는다. 명시적 상속이나 조합을 선호한다.
+- 테스트에서는 `SomeClass.prototype` 패치보다 인스턴스 단위 stub을 선호한다.
+- 까다로운 제어 흐름, 프로토콜 세부사항, 경계 조건에는 짧은 설명 주석을 추가해도 된다.
 
-- `/landpr` lives in the global Codex prompts (`~/.codex/prompts/landpr.md`); when landing or merging any PR, always follow that `/landpr` process.
-- Create commits with `scripts/committer "<msg>" <file...>`; avoid manual `git add`/`git commit` so staging stays scoped.
-- Follow concise, action-oriented commit messages (e.g., `CLI: add verbose flag to send`).
-- Group related changes; avoid bundling unrelated refactors.
-- PR submission template (canonical): `.github/pull_request_template.md`
-- Issue submission templates (canonical): `.github/ISSUE_TEMPLATE/`
+## 에러 처리와 안전성
 
-## Git Notes
+- 증상만 가리지 말고 근본 원인을 수정한다. cast나 광범위 억제로 에러를 숨기지 않는다.
+- 작업 트리의 기존 사용자 변경은 보존하고, 관련 없는 수정은 되돌리지 않는다.
+- `node_modules`는 절대 수정하지 않는다.
+- Carbon 의존성은 절대 업데이트하지 않는다.
+- 명시적 승인 없이 의존성, vendored 코드, `pnpm.patchedDependencies` 항목을 패치하지 않는다.
+- `pnpm.patchedDependencies`로 고정된 의존성은 반드시 exact version을 유지한다.
 
-- If `git branch -d/-D <branch>` is policy-blocked, delete the local ref directly: `git update-ref -d refs/heads/<branch>`.
-- Agents MUST NOT create or push merge commits on `main`. If `main` has advanced, rebase local commits onto the latest `origin/main` before pushing.
-- Bulk PR close/reopen safety: if a close action would affect more than 5 PRs, first ask for explicit user confirmation with the exact PR count and target scope/query.
+## 테스트 메모
 
-## Security & Configuration Tips
+- 기본 테스트 프레임워크는 Vitest이며, lines/branches/functions/statements 모두 70% 커버리지 기준을 사용한다.
+- 테스트는 `--isolate=false`에서도 안정적으로 동작하도록 타이머, env var, 글로벌, mock, 소켓, 임시 디렉터리, 모듈 상태를 정리해야 한다.
+- 실패를 잠재우기 위해 baseline, inventory, snapshot, ignore list, expected-failure 파일을 수정하지 않는다.
+- 테스트 워커 수를 16보다 높이지 않는다.
+- 현재 `main` 기준의 새 근거 없이 Vitest VM pool을 다시 도입하지 않는다.
+- 테스트에서 샘플 모델 상수를 건드릴 때는 `sonnet-4.6`과 `gpt-5.4`를 선호한다.
 
-- Web provider stores creds at `~/.openclaw/credentials/`; rerun `openclaw login` if logged out.
-- Pi sessions live under `~/.openclaw/sessions/` by default; the base directory is not configurable.
-- Environment variables: see `~/.profile`.
-- Never commit or publish real phone numbers, videos, or live configuration values. Use obviously fake placeholders in docs, tests, and examples.
-- Release flow: use the private [maintainer release docs](https://github.com/openclaw/maintainers/blob/main/release/README.md) for the actual runbook, `docs/reference/RELEASING.md` for the public release policy, and `$openclaw-release-maintainer` for the maintainership workflow.
+## 문서 규칙
 
-## Local Runtime / Platform Notes
+- 문서는 Mintlify를 사용하며 `docs/` 아래에 있다.
+- 문서 내부 링크는 루트 기준 상대 경로를 사용하고 `.md` / `.mdx` 확장자는 생략한다. 예: `[Config](/configuration)`
+- `README.md`에서는 `https://docs.openclaw.ai/...` 형태의 절대 링크를 사용한다.
+- 문서는 일반적인 내용으로 유지하고, 개인 기기 이름, 실제 전화번호, 실사용 자격 증명은 포함하지 않는다.
+- `docs/zh-CN/**`는 생성 산출물이므로, 해당 파이프라인을 명시적으로 요청받은 경우가 아니면 수정하지 않는다.
+- 영문 문서를 수정한 뒤 i18n을 다시 돌릴 때는 먼저 `docs/.i18n/glossary.zh-CN.json`을 업데이트한다.
 
-- Vocabulary: "makeup" = "mac app".
-- Rebrand/migration issues or legacy config/service warnings: run `openclaw doctor` (see `docs/gateway/doctor.md`).
-- Use `$openclaw-parallels-smoke` at `.agents/skills/openclaw-parallels-smoke/SKILL.md` for Parallels smoke, rerun, upgrade, debug, and result-interpretation workflows across macOS, Windows, and Linux guests.
-- For the macOS Discord roundtrip deep dive, use the narrower `.agents/skills/parallels-discord-roundtrip/SKILL.md` companion skill.
-- Never edit `node_modules` (global/Homebrew/npm/git installs too). Updates overwrite. Skill notes go in `tools.md` or `AGENTS.md`.
-- If you need local-only `.agents` ignores, use `.git/info/exclude` instead of repo `.gitignore`.
-- When adding a new `AGENTS.md` anywhere in the repo, also add a `CLAUDE.md` symlink pointing to it (example: `ln -s AGENTS.md CLAUDE.md`).
-- Signal: "update fly" => `fly ssh console -a flawd-bot -C "bash -lc 'cd /data/clawd/openclaw && git pull --rebase origin main'"` then `fly machines restart e825232f34d058 -a flawd-bot`.
-- CLI progress: use `src/cli/progress.ts` (`osc-progress` + `@clack/prompts` spinner); don’t hand-roll spinners/bars.
-- Status output: keep tables + ANSI-safe wrapping (`src/terminal/table.ts`); `status --all` = read-only/pasteable, `status --deep` = probes.
-- Gateway currently runs only as the menubar app; there is no separate LaunchAgent/helper label installed. Restart via the OpenClaw Mac app or `scripts/restart-mac.sh`; to verify/kill use `launchctl print gui/$UID | grep openclaw` rather than assuming a fixed label. **When debugging on macOS, start/stop the gateway via the app, not ad-hoc tmux sessions; kill any temporary tunnels before handoff.**
-- macOS logs: use `./scripts/clawlog.sh` to query unified logs for the OpenClaw subsystem; it supports follow/tail/category filters and expects passwordless sudo for `/usr/bin/log`.
-- If shared guardrails are available locally, review them; otherwise follow this repo's guidance.
-- SwiftUI state management (iOS/macOS): prefer the `Observation` framework (`@Observable`, `@Bindable`) over `ObservableObject`/`@StateObject`; don’t introduce new `ObservableObject` unless required for compatibility, and migrate existing usages when touching related code.
-- Connection providers: when adding a new connection, update every UI surface and docs (macOS app, web UI, mobile if applicable, onboarding/overview docs) and add matching status + configuration forms so provider lists and settings stay in sync.
-- Version locations: `package.json` (CLI), `apps/android/app/build.gradle.kts` (versionName/versionCode), `apps/ios/Sources/Info.plist` + `apps/ios/Tests/Info.plist` (CFBundleShortVersionString/CFBundleVersion), `apps/macos/Sources/OpenClaw/Resources/Info.plist` (CFBundleShortVersionString/CFBundleVersion), `docs/install/updating.md` (pinned npm version), and Peekaboo Xcode projects/Info.plists (MARKETING_VERSION/CURRENT_PROJECT_VERSION).
-- "Bump version everywhere" means all version locations above **except** `appcast.xml` (only touch appcast when cutting a new macOS Sparkle release).
-- **Restart apps:** “restart iOS/Android apps” means rebuild (recompile/install) and relaunch, not just kill/launch.
-- **Device checks:** before testing, verify connected real devices (iOS/Android) before reaching for simulators/emulators.
-- iOS Team ID lookup: `security find-identity -p codesigning -v` → use Apple Development (…) TEAMID. Fallback: `defaults read com.apple.dt.Xcode IDEProvisioningTeamIdentifiers`.
-- A2UI bundle hash: `src/canvas-host/a2ui/.bundle.hash` is auto-generated; ignore unexpected changes, and only regenerate via `pnpm canvas:a2ui:bundle` (or `scripts/bundle-a2ui.sh`) when needed. Commit the hash as a separate commit.
-- Release signing/notary credentials are managed outside the repo; maintainers keep that setup in the private [maintainer release docs](https://github.com/openclaw/maintainers/tree/main/release).
-- Lobster palette: use the shared CLI palette in `src/terminal/palette.ts` (no hardcoded colors); apply palette to onboarding/config prompts and other TTY UI output as needed.
-- When asked to open a “session” file, open the Pi session logs under `~/.openclaw/agents/<agentId>/sessions/*.jsonl` (use the `agent=<id>` value in the Runtime line of the system prompt; newest unless a specific ID is given), not the default `sessions.json`. If logs are needed from another machine, SSH via Tailscale and read the same path there.
-- Do not rebuild the macOS app over SSH; rebuilds must be run directly on the Mac.
-- Voice wake forwarding tips:
-  - Command template should stay `openclaw-mac agent --message "${text}" --thinking low`; `VoiceWakeForwarder` already shell-escapes `${text}`. Don’t add extra quotes.
-  - launchd PATH is minimal; ensure the app’s launch agent PATH includes standard system paths plus your pnpm bin (typically `$HOME/Library/pnpm`) so `pnpm`/`openclaw` binaries resolve when invoked via `openclaw-mac`.
+## 플랫폼별 메모
 
-## Collaboration / Safety Notes
+- SwiftUI 작업에서는 새로운 `ObservableObject`보다 Observation 프레임워크(`@Observable`, `@Bindable`)를 선호한다.
+- 모바일 작업에서 simulator를 쓰기 전에 먼저 연결된 실제 디바이스가 있는지 확인한다.
+- SSH 환경에서 macOS 앱을 다시 빌드하지 않는다.
+- macOS에서 Gateway 디버깅은 ad-hoc tmux 세션이 아니라 앱 또는 `scripts/restart-mac.sh`를 통해 진행한다.
+- CLI 진행 UI는 `src/cli/progress.ts`, 공용 터미널 색상은 `src/terminal/palette.ts`를 사용한다.
 
-- When working on a GitHub Issue or PR, print the full URL at the end of the task.
-- When answering questions, respond with high-confidence answers only: verify in code; do not guess.
-- Never update the Carbon dependency.
-- Any dependency with `pnpm.patchedDependencies` must use an exact version (no `^`/`~`).
-- Patching dependencies (pnpm patches, overrides, or vendored changes) requires explicit approval; do not do this by default.
-- **Multi-agent safety:** do **not** create/apply/drop `git stash` entries unless explicitly requested (this includes `git pull --rebase --autostash`). Assume other agents may be working; keep unrelated WIP untouched and avoid cross-cutting state changes.
-- **Multi-agent safety:** when the user says "push", you may `git pull --rebase` to integrate latest changes (never discard other agents' work). When the user says "commit", scope to your changes only. When the user says "commit all", commit everything in grouped chunks.
-- **Multi-agent safety:** do **not** create/remove/modify `git worktree` checkouts (or edit `.worktrees/*`) unless explicitly requested.
-- **Multi-agent safety:** do **not** switch branches / check out a different branch unless explicitly requested.
-- **Multi-agent safety:** running multiple agents is OK as long as each agent has its own session.
-- **Multi-agent safety:** when you see unrecognized files, keep going; focus on your changes and commit only those.
-- Lint/format churn:
-  - If staged+unstaged diffs are formatting-only, auto-resolve without asking.
-  - If commit/push already requested, auto-stage and include formatting-only follow-ups in the same commit (or a tiny follow-up commit if needed), no extra confirmation.
-  - Only ask when changes are semantic (logic/data/behavior).
-- **Multi-agent safety:** focus reports on your edits; avoid guard-rail disclaimers unless truly blocked; when multiple agents touch the same file, continue if safe; end with a brief “other files present” note only if relevant.
-- Bug investigations: read source code of relevant npm dependencies and all related local code before concluding; aim for high-confidence root cause.
-- Code style: add brief comments for tricky logic; keep files under ~500 LOC when feasible (split/refactor as needed).
-- Tool schema guardrails (google-antigravity): avoid `Type.Union` in tool input schemas; no `anyOf`/`oneOf`/`allOf`. Use `stringEnum`/`optionalStringEnum` (Type.Unsafe enum) for string lists, and `Type.Optional(...)` instead of `... | null`. Keep top-level tool schema as `type: "object"` with `properties`.
-- Tool schema guardrails: avoid raw `format` property names in tool schemas; some validators treat `format` as a reserved keyword and reject the schema.
-- Never send streaming/partial replies to external messaging surfaces (WhatsApp, Telegram); only final replies should be delivered there. Streaming/tool events may still go to internal UIs/control channel.
-- For manual `openclaw message send` messages that include `!`, use the heredoc pattern noted below to avoid the Bash tool’s escaping.
-- Release guardrails: do not change version numbers without operator’s explicit consent; always ask permission before running any npm publish/release step.
-- Beta release guardrail: when using a beta Git tag (for example `vYYYY.M.D-beta.N`), publish npm with a matching beta version suffix (for example `YYYY.M.D-beta.N`) rather than a plain version on `--tag beta`; otherwise the plain version name gets consumed/blocked.
+## 커밋과 PR
+
+- 커밋 시 staging 범위를 제한하려면 `scripts/committer "<msg>" <file...>`를 사용한다.
+- 커밋 메시지는 `CLI: add verbose flag to send`처럼 짧고 동작 중심으로 쓴다.
+- `main`에서 merge commit을 만들지 말고 `origin/main` 기준 rebase를 사용한다.
+- 명시적으로 요청받지 않았다면 `git stash`, `git worktree`, 브랜치 전환을 사용하지 않는다.
+
+## 에이전트 작업 요약
+
+- 수정 전에는 항상 주변 코드를 읽고, 로컬 패턴에 맞춰 구현한다.
+- 검증은 가능한 가장 좁은 명령부터 시작하되, 영향 범위가 넓으면 `pnpm build`, `pnpm check`, 더 넓은 테스트로 단계적으로 올린다.
+- 추측하지 말고 코드로 확인한 높은 확신의 결론만 보고한다.
