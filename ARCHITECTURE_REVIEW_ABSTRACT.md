@@ -1,72 +1,72 @@
-# OpenClaw Architecture Review: Abstract Map
+# OpenClaw 아키텍처 리뷰: 추상 맵
 
-This file is the shortest high-signal map of the repository.
-Read this first.
-Read `ARCHITECTURE_REVIEW_DETAILED.md` second.
+이 파일은 저장소를 가장 짧고 밀도 높게 파악하기 위한 상위 구조 지도입니다.
+먼저 이 파일을 읽으세요.
+그다음 `ARCHITECTURE_REVIEW_DETAILED.md` 를 읽으세요.
 
-## What OpenClaw Actually Is
+## OpenClaw은 실제로 무엇인가
 
-OpenClaw is not one app.
-It is a monorepo that combines:
+OpenClaw은 하나의 앱이 아닙니다.
+다음 요소를 함께 담고 있는 모노레포입니다.
 
-- a local-first CLI
-- a long-lived Gateway server and control plane
-- an embedded agent runtime
-- a plugin and channel platform
-- a browser Control UI
-- native macOS, iOS, and Android shells
+- 로컬 우선 CLI
+- 장시간 실행되는 Gateway 서버와 control plane
+- 임베디드 agent runtime
+- plugin 및 channel 플랫폼
+- 브라우저 Control UI
+- macOS, iOS, Android 네이티브 셸
 
-The practical center of gravity is the Gateway plus the plugin runtime, not the CLI.
+실질적인 중심축은 CLI가 아니라 Gateway와 plugin runtime입니다.
 
-## Top-Level Mental Model
+## 최상위 정신 모델
 
-Think of the system as six layers:
+이 시스템은 6개 계층으로 보면 이해가 빠릅니다.
 
-1. Shells
-   CLI, web UI, macOS app, iOS app, Android app
-2. Control plane
-   Gateway WebSocket and HTTP server
-3. Domain orchestration
+1. 셸
+   CLI, web UI, macOS 앱, iOS 앱, Android 앱
+2. control plane
+   Gateway WebSocket 및 HTTP 서버
+3. 도메인 오케스트레이션
    commands, sessions, routing, outbound messaging, agent execution
-4. Capability platform
+4. capability 플랫폼
    plugins, channels, providers, tools, hooks, services
-5. Specialized subsystems
+5. 특화 서브시스템
    embedded agent runtime, memory, context engine, ACP, media, browser
-6. Persistence and policy
+6. 영속성 및 정책
    config, sessions, credentials, state dirs, approvals, security rules
 
-## Physical Layout
+## 물리적 레이아웃
 
 - `openclaw.mjs`
-  Thin launcher that verifies Node and loads `dist/entry.js`.
+  Node 버전을 확인하고 `dist/entry.js` 를 로드하는 얇은 런처입니다.
 - `src/entry.ts`
-  Actual CLI bootstrap.
+  실제 CLI 부트스트랩입니다.
 - `src/cli/`
-  Commander program wiring, argv routing, lazy command registration.
+  Commander 프로그램 wiring, argv routing, lazy command registration을 담당합니다.
 - `src/commands/`
-  User-facing command behavior.
+  사용자에게 보이는 command 동작이 들어 있습니다.
 - `src/gateway/`
-  Long-lived control plane server and request handlers.
+  장시간 살아 있는 control plane 서버와 request handler가 들어 있습니다.
 - `src/plugins/`
-  Plugin discovery, loading, registration, runtime ownership.
+  plugin discovery, loading, registration, runtime ownership을 담당합니다.
 - `src/channels/`
-  Shared channel abstractions and channel-plugin contracts.
+  공통 channel 추상화와 channel-plugin contract가 들어 있습니다.
 - `src/agents/`
-  Embedded agent runtime, tools, auth-profile rotation, failover, sandbox, skills.
+  embedded agent runtime, tools, auth-profile rotation, failover, sandbox, skills를 담당합니다.
 - `src/memory/`
-  Search, indexing, embedding providers, hybrid retrieval.
+  search, indexing, embedding providers, hybrid retrieval을 담당합니다.
 - `src/context-engine/`
-  Exclusive-slot context engine contract.
+  exclusive-slot context engine contract가 들어 있습니다.
 - `extensions/`
-  Workspace plugins. This is part of the product, not an afterthought.
+  workspace plugins입니다. 부가 요소가 아니라 제품의 핵심 일부입니다.
 - `ui/`
-  Browser Control UI.
+  브라우저 Control UI입니다.
 - `apps/`
-  Native shells.
+  네이티브 셸입니다.
 
-## Three Runtime Flows
+## 세 가지 런타임 흐름
 
-### 1. CLI Flow
+### 1. CLI 흐름
 
 `openclaw.mjs`
 -> `src/entry.ts`
@@ -74,9 +74,9 @@ Think of the system as six layers:
 -> `src/cli/program/*`
 -> `src/commands/*`
 
-The CLI is mostly a router into domain code.
+CLI는 대체로 도메인 코드로 진입시키는 라우터 역할을 합니다.
 
-### 2. Gateway Flow
+### 2. Gateway 흐름
 
 `src/gateway/server.ts`
 -> `src/gateway/server.impl.ts`
@@ -84,56 +84,56 @@ The CLI is mostly a router into domain code.
 -> `src/gateway/server-methods/*`
 -> plugins, channels, agent runtime, memory, sessions
 
-The Gateway is the main runtime kernel.
+Gateway는 메인 런타임 커널입니다.
 
-### 3. Plugin Flow
+### 3. Plugin 흐름
 
 `extensions/*/openclaw.plugin.json`
 -> `src/plugins/discovery.ts`
 -> `src/plugins/loader.ts`
 -> `src/plugins/registry.ts`
 -> active runtime registry
--> consumed by gateway, CLI, channels, providers, tools
+-> gateway, CLI, channels, providers, tools에서 소비
 
-The plugin system is the real extensibility layer.
+plugin 시스템이 실제 확장성 계층입니다.
 
-## Core Ownership Model
+## 코어 ownership 모델
 
-The codebase repeatedly uses the same boundary:
+이 코드베이스는 반복적으로 같은 경계를 사용합니다.
 
-- core owns contracts, orchestration, policy, fallback, and lifecycle
-- plugins own vendor-specific or channel-specific behavior
-- the Gateway owns long-lived runtime authority
-- shells are thin clients over the Gateway
+- core는 contract, orchestration, policy, fallback, lifecycle을 소유합니다
+- plugins는 vendor별 또는 channel별 동작을 소유합니다
+- Gateway는 장시간 실행되는 런타임 권한을 소유합니다
+- 셸은 Gateway 위의 얇은 클라이언트입니다
 
-This is the single most important design choice in the repo.
+이것이 이 저장소에서 가장 중요한 설계 선택입니다.
 
-## Primary Contracts
+## 가장 중요한 contract
 
-If you only remember a few types and entry points, remember these:
+몇 개의 타입과 엔트리 포인트만 기억한다면 아래를 기억하면 됩니다.
 
 - `src/cli/run-main.ts:82`
-  CLI entry.
+  CLI 엔트리
 - `src/gateway/server.impl.ts:362`
-  Gateway startup.
+  Gateway startup
 - `src/gateway/server-methods.ts:68`
-  Gateway method registry.
+  Gateway method registry
 - `src/plugins/types.ts:1314`
-  `OpenClawPluginApi` registration surface.
+  `OpenClawPluginApi` registration surface
 - `src/plugins/registry.ts:247`
-  Plugin registry construction.
+  plugin registry construction
 - `src/plugins/runtime/index.ts:184`
-  `createPluginRuntime()`.
+  `createPluginRuntime()`
 - `src/channels/plugins/types.plugin.ts:55`
-  `ChannelPlugin` contract.
+  `ChannelPlugin` contract
 - `src/agents/pi-embedded-runner/run.ts`
-  Embedded agent execution loop.
+  embedded agent execution loop
 - `src/memory/manager.ts`
-  Memory index manager.
+  memory index manager
 
-## Review Order
+## 리뷰 순서
 
-If your goal is framework extraction, review in this order:
+목표가 framework extraction이라면 다음 순서로 보는 것이 좋습니다.
 
 1. `ARCHITECTURE_REVIEW_DETAILED.md`
 2. `src/plugins/types.ts`
@@ -144,27 +144,27 @@ If your goal is framework extraction, review in this order:
 7. `src/gateway/server.impl.ts`
 8. `src/agents/pi-embedded-runner/run.ts`
 9. `src/memory/manager.ts`
-10. `src/commands/` and `src/cli/`
+10. `src/commands/` 와 `src/cli/`
 
-## Framework Extraction View
+## Framework extraction 관점
 
-If you were designing a new framework out of this repo, the likely reusable kernel would be:
+이 저장소에서 새로운 framework를 뽑아낸다면 재사용 가능한 커널 후보는 대략 다음과 같습니다.
 
-- a control-plane server
-- a capability registry
-- a plugin runtime with typed contracts
-- a long-lived execution runtime
+- control-plane 서버
+- capability registry
+- typed contract를 가진 plugin runtime
+- 장시간 살아 있는 execution runtime
 - shell adapters
-- policy and state services
+- policy 및 state services
 
-The likely OpenClaw-specific adapters would be:
+반대로 OpenClaw 특화 adapter일 가능성이 높은 부분은 다음과 같습니다.
 
 - messaging channels
 - OpenClaw session semantics
 - OpenClaw command UX
 - vendor/provider integrations
-- product-specific UI and native clients
+- 제품 전용 UI와 네이티브 클라이언트
 
-## One-Sentence Summary
+## 한 문장 요약
 
-OpenClaw is best understood as a plugin-driven agent operating system with a Gateway-centered control plane and multiple thin shells around it.
+OpenClaw은 Gateway 중심 control plane 위에 여러 얇은 셸이 얹힌, plugin-driven agent operating system에 가깝게 이해하는 편이 가장 정확합니다.

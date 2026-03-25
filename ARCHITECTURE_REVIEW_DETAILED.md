@@ -1,194 +1,194 @@
-# OpenClaw Architecture Review: Detailed Map
+# OpenClaw 아키텍처 리뷰: 상세 맵
 
-This file is the technical deep-dive companion to `ARCHITECTURE_REVIEW_ABSTRACT.md`.
-It is written for framework extraction, subsystem review, and architectural redesign.
+이 파일은 `ARCHITECTURE_REVIEW_ABSTRACT.md` 의 기술적 심화판입니다.
+framework extraction, subsystem review, 아키텍처 재설계를 염두에 두고 작성했습니다.
 
-## 1. Scale Snapshot
+## 1. 규모 스냅샷
 
-Current repository shape, from the codebase itself:
+현재 저장소의 형태를 코드베이스 자체에서 읽어보면 대략 다음과 같습니다.
 
-- `src/` files: about 5,103
-- test files across `src`, `test`, `extensions`, `ui`: about 2,990
-- extension directories: 82
-- plugin manifests in `extensions/*/openclaw.plugin.json`: 80
-- browser UI source files in `ui/src`: about 229
+- `src/` 파일 수: 약 5,103개
+- `src`, `test`, `extensions`, `ui` 전체 테스트 파일 수: 약 2,990개
+- extension 디렉터리 수: 82개
+- `extensions/*/openclaw.plugin.json` 기준 plugin manifest 수: 80개
+- `ui/src` 브라우저 UI 소스 파일 수: 약 229개
 
-Top `src/` areas by file count:
+`src/` 상위 영역별 파일 수는 다음과 같습니다.
 
-| Area             | Approx. files | Meaning                                            |
-| ---------------- | ------------: | -------------------------------------------------- |
-| `src/agents`     |           974 | embedded agent runtime is a first-class subsystem  |
-| `src/infra`      |           534 | shared low-level infrastructure is large           |
-| `src/commands`   |           426 | CLI behavior is broad and product-facing           |
-| `src/gateway`    |           393 | control plane is large and feature-rich            |
-| `src/auto-reply` |           348 | reply generation and orchestration are substantial |
-| `src/cli`        |           326 | CLI wiring is non-trivial                          |
-| `src/config`     |           264 | config/state management is a major concern         |
-| `src/plugins`    |           235 | plugin ownership and loading are central           |
-| `src/plugin-sdk` |           216 | public integration surface is large                |
-| `src/channels`   |           191 | channel abstraction is a real platform layer       |
+| 영역             | 대략 파일 수 | 의미                                                |
+| ---------------- | -----------: | --------------------------------------------------- |
+| `src/agents`     |          974 | embedded agent runtime이 최상위 서브시스템이라는 뜻 |
+| `src/infra`      |          534 | 공유 저수준 인프라 비중이 큼                        |
+| `src/commands`   |          426 | CLI 동작 범위가 넓고 제품 표면적이 큼               |
+| `src/gateway`    |          393 | control plane이 크고 기능이 많음                    |
+| `src/auto-reply` |          348 | reply 생성과 orchestration 비중이 큼                |
+| `src/cli`        |          326 | CLI wiring이 단순하지 않음                          |
+| `src/config`     |          264 | config/state 관리가 핵심 관심사임                   |
+| `src/plugins`    |          235 | plugin ownership과 loading이 중심축임               |
+| `src/plugin-sdk` |          216 | public integration surface가 큼                     |
+| `src/channels`   |          191 | channel abstraction이 독립적인 플랫폼 계층임        |
 
-Important sub-area density:
+중요한 하위 영역 밀도는 다음과 같습니다.
 
-- `src/commands/doctor`: 42 files
-- `src/commands/models`: 31 files
-- `src/gateway/server-methods`: 69 files
-- `src/gateway/server`: 29 files
-- `src/gateway/protocol`: 29 files
-- `src/agents/pi-embedded-runner`: 115 files
-- `src/agents/tools`: 83 files
-- `src/agents/sandbox`: 62 files
+- `src/commands/doctor`: 42개 파일
+- `src/commands/models`: 31개 파일
+- `src/gateway/server-methods`: 69개 파일
+- `src/gateway/server`: 29개 파일
+- `src/gateway/protocol`: 29개 파일
+- `src/agents/pi-embedded-runner`: 115개 파일
+- `src/agents/tools`: 83개 파일
+- `src/agents/sandbox`: 62개 파일
 
-Interpretation:
+해석:
 
-- this is not a small CLI app with plugins
-- this is a platform repo with multiple semi-independent subsystems
-- any new framework extracted from it should separate kernel concerns from product concerns early
+- 이 저장소는 plugin이 달린 작은 CLI 앱이 아닙니다
+- 여러 개의 반독립적 서브시스템을 품은 플랫폼 저장소입니다
+- 여기서 새 framework를 추출하려면 초기에 kernel concern과 product concern을 분리해야 합니다
 
-## 2. Workspace Structure
+## 2. 워크스페이스 구조
 
-Workspace roots from `pnpm-workspace.yaml`:
+`pnpm-workspace.yaml` 기준 워크스페이스 루트는 다음과 같습니다.
 
 - root package
 - `ui`
 - `packages/*`
 - `extensions/*`
 
-High-level role map:
+상위 역할 맵은 다음과 같습니다.
 
-| Path           | Role                                                            |
-| -------------- | --------------------------------------------------------------- |
-| `openclaw.mjs` | launcher entrypoint                                             |
-| `src/`         | core runtime and product logic                                  |
-| `extensions/`  | workspace plugins and official channel/provider implementations |
-| `ui/`          | browser Control UI                                              |
-| `apps/`        | macOS, iOS, Android shells                                      |
-| `packages/`    | small compatibility packages                                    |
-| `test/`        | cross-cutting tests and guardrails                              |
-| `docs/`        | public architecture and user docs                               |
+| 경로           | 역할                                            |
+| -------------- | ----------------------------------------------- |
+| `openclaw.mjs` | 런처 엔트리포인트                               |
+| `src/`         | 코어 런타임과 제품 로직                         |
+| `extensions/`  | workspace plugins 및 공식 channel/provider 구현 |
+| `ui/`          | 브라우저 Control UI                             |
+| `apps/`        | macOS, iOS, Android 셸                          |
+| `packages/`    | 작은 호환성 패키지                              |
+| `test/`        | 횡단 관심사 테스트와 guardrail                  |
+| `docs/`        | 공개 아키텍처 및 사용자 문서                    |
 
-The repo is physically modular, but the product runtime is centered in `src/`.
+물리적으로는 모듈화돼 있지만, 제품 런타임의 중심은 `src/` 입니다.
 
-## 3. The System Center: Gateway Plus Plugin Runtime
+## 3. 시스템의 중심: Gateway + Plugin Runtime
 
-The architectural center is not the CLI.
-The architectural center is:
+이 저장소의 구조적 중심은 CLI가 아닙니다.
+실제 중심은 다음 세 가지입니다.
 
-- the Gateway server
-- the plugin registry and runtime
-- the embedded agent runtime
+- Gateway 서버
+- plugin registry와 runtime
+- embedded agent runtime
 
-The CLI, web UI, and native apps are shells around that center.
+CLI, web UI, 네이티브 앱은 이 중심 위에 올라간 셸입니다.
 
-This is consistent with both the code and the public architecture docs:
+이 해석은 코드와 공개 문서가 모두 같은 방향을 가리킵니다.
 
 - `docs/concepts/architecture.md`
 - `docs/plugins/architecture.md`
 
-## 4. Boot and Entry Points
+## 4. 부트와 엔트리 포인트
 
-### 4.1 Launcher
+### 4.1 런처
 
-`openclaw.mjs` does four things:
+`openclaw.mjs` 는 네 가지를 합니다.
 
-- enforces Node minimum version
-- enables compile cache when available
-- loads warning filter
-- imports built `dist/entry.js`
+- 최소 Node 버전 강제
+- 가능할 때 compile cache 활성화
+- warning filter 로드
+- 빌드된 `dist/entry.js` import
 
-It is a deployment wrapper, not the real architecture.
+즉, 이 파일은 배포용 wrapper이지 실제 아키텍처 자체는 아닙니다.
 
-### 4.2 Real CLI Bootstrap
+### 4.2 실제 CLI 부트스트랩
 
-Main path:
+메인 경로는 다음과 같습니다.
 
 `openclaw.mjs`
 -> `src/entry.ts`
 -> `src/cli/run-main.ts`
 
-Important files:
+중요 파일:
 
 - `src/entry.ts`
-  runtime bootstrap, respawn logic, profile env handling, fast help/version path
+  runtime bootstrap, respawn logic, profile env 처리, 빠른 help/version 경로를 담당
 - `src/cli/run-main.ts:82`
-  real CLI entry function `runCli()`
+  실제 CLI 엔트리 함수 `runCli()`
 - `src/cli/program/build-program.ts:8`
-  constructs Commander program
+  Commander 프로그램 구성
 - `src/cli/program/command-registry.ts:302`
-  registers core commands lazily
+  core command를 lazy 등록
 
-Key observation:
+핵심 관찰:
 
-- the CLI is deliberately lazy-loaded
-- the command tree is not the business logic
-- the command tree is a shell over domain modules in `src/commands/`
+- CLI는 의도적으로 lazy-loaded 구조입니다
+- command tree가 business logic 자체는 아닙니다
+- command tree는 `src/commands/` 안의 도메인 모듈 위에 얹힌 셸입니다
 
-### 4.3 Library Export Path
+### 4.3 라이브러리 export 경로
 
-`src/index.ts` is a compatibility entry and library shell.
-`src/library.ts` re-exports selected functions like config loading, session store access, process helpers, and default dependency creation.
+`src/index.ts` 는 compatibility entry이자 library shell입니다.
+`src/library.ts` 는 config loading, session store access, process helper, default dependency creation 같은 선택된 기능만 재노출합니다.
 
-This suggests a secondary identity:
+이 점이 시사하는 바는 다음과 같습니다.
 
-- OpenClaw is also used as a library surface in some contexts
-- but the library surface is intentionally much smaller than the runtime internals
+- OpenClaw은 일부 맥락에서 library surface로도 사용됩니다
+- 하지만 library surface는 런타임 내부 구조보다 의도적으로 훨씬 작습니다
 
-## 5. CLI Architecture
+## 5. CLI 아키텍처
 
-The CLI has three layers:
+CLI는 크게 세 계층으로 나뉩니다.
 
-1. bootstrap and argv normalization
+1. bootstrap 및 argv normalization
 2. command-program registration
 3. command behavior modules
 
-Main files:
+주요 파일:
 
 - `src/cli/run-main.ts`
 - `src/cli/program/*`
 - `src/commands/*`
 
-Key characteristics:
+핵심 특성:
 
-- lazy command registration to reduce startup overhead
-- some root-level fast paths for `--help` and `--version`
-- plugin CLI commands can be added at runtime through `src/plugins/cli.ts`
-- command execution still relies on config, plugin registry, gateway, sessions, and channels
+- startup 비용을 줄이기 위한 lazy command registration
+- 루트 차원의 `--help`, `--version` fast path
+- `src/plugins/cli.ts` 를 통한 runtime plugin CLI command 추가
+- command 실행이 여전히 config, plugin registry, gateway, sessions, channels에 의존
 
-Commands are not isolated micro-tools.
-They are frontends into the same shared runtime graph.
+즉, command는 고립된 micro-tool이 아닙니다.
+같은 공유 런타임 그래프의 앞단 인터페이스입니다.
 
-## 6. Gateway Architecture
+## 6. Gateway 아키텍처
 
-### 6.1 Public Gateway Entry
+### 6.1 공개 Gateway 엔트리
 
-Gateway entry:
+Gateway 엔트리는 다음과 같습니다.
 
 - `src/gateway/server.ts`
-  exports `startGatewayServer`
+  `startGatewayServer` 를 export
 - `src/gateway/server.impl.ts:362`
-  contains the real startup logic
+  실제 startup 로직이 들어 있는 파일
 
-### 6.2 What Gateway Startup Actually Does
+### 6.2 Gateway startup이 실제로 하는 일
 
-Reading `src/gateway/server.impl.ts` shows a startup sequence roughly like this:
+`src/gateway/server.impl.ts` 를 보면 startup 시퀀스는 대략 아래와 같습니다.
 
-1. read config snapshot
-2. migrate legacy config if needed
-3. validate startup config
-4. auto-enable plugins from config and environment
-5. activate secrets runtime
-6. load plugins and build active registry
-7. build request handlers, including dynamic plugin handlers
-8. start discovery sidecars
-9. start maintenance timers
-10. expose Tailscale if configured
-11. start browser and plugin sidecars
-12. start config reloader
+1. config snapshot 읽기
+2. 필요 시 legacy config 마이그레이션
+3. startup config 검증
+4. config 및 environment 기준 plugin auto-enable
+5. secrets runtime 활성화
+6. plugin 로드 및 active registry 구성
+7. plugin handler를 포함한 request handler 구성
+8. discovery sidecar 시작
+9. maintenance timer 시작
+10. 필요 시 Tailscale 노출
+11. browser 및 plugin sidecar 시작
+12. config reloader 시작
 
-Relevant anchors:
+관련 anchor:
 
 - `src/gateway/server.impl.ts:380`
-  initial config read
+  초기 config 읽기
 - `src/gateway/server.impl.ts:387`
   legacy migration
 - `src/gateway/server.impl.ts:409`
@@ -196,32 +196,32 @@ Relevant anchors:
 - `src/gateway/server.impl.ts:760`
   discovery startup
 - `src/gateway/server.impl.ts:806`
-  maintenance timers
+  maintenance timer
 - `src/gateway/server.impl.ts:1037`
-  exec approval handlers
+  exec approval handler
 - `src/gateway/server.impl.ts:1040`
-  secrets handlers
+  secrets handler
 - `src/gateway/server.impl.ts:1179`
-  Tailscale exposure
+  Tailscale 노출
 - `src/gateway/server.impl.ts:1199`
-  sidecars
+  sidecar
 - `src/gateway/server.impl.ts:1270`
   config reloader
 
-Interpretation:
+해석:
 
-- the Gateway is not a thin transport
-- it is a runtime kernel and lifecycle manager
-- it owns initialization, policy, reload, background timers, and sidecars
+- Gateway는 얇은 transport 계층이 아닙니다
+- runtime kernel이자 lifecycle manager입니다
+- initialization, policy, reload, background timer, sidecar를 모두 소유합니다
 
-### 6.3 Gateway Request Handling
+### 6.3 Gateway request 처리
 
-Method aggregation:
+method 집계는 다음 파일에서 이뤄집니다.
 
 - `src/gateway/server-methods.ts:68`
   `coreGatewayHandlers`
 
-This file composes many handler sets:
+이 파일은 다음 handler set을 합칩니다.
 
 - `agent`
 - `agents`
@@ -252,49 +252,49 @@ This file composes many handler sets:
 - `web`
 - `wizard`
 
-This is a major clue for framework design:
+이 구조는 framework 설계 관점에서 매우 중요합니다.
 
-- transport is unified
-- business API is method-based
-- handlers are modular
-- request scoping and auth are centralized
+- transport는 통합돼 있습니다
+- business API는 method 기반입니다
+- handler는 모듈식입니다
+- request scoping과 auth는 중앙 집중적으로 처리됩니다
 
-In framework terms, this looks like:
+framework 관점으로 번역하면 다음과 같습니다.
 
-- one control-plane protocol
-- one method registry
-- many feature modules plugged into the registry
+- 하나의 control-plane protocol
+- 하나의 method registry
+- registry에 꽂히는 많은 feature module
 
-## 7. Plugin Architecture
+## 7. Plugin 아키텍처
 
-### 7.1 Static Manifest Layer
+### 7.1 정적 manifest 계층
 
-Every native plugin can expose static metadata via `openclaw.plugin.json`.
+모든 native plugin은 `openclaw.plugin.json` 을 통해 정적 메타데이터를 노출할 수 있습니다.
 
-Example roles:
+예시 역할:
 
 - channels: `extensions/telegram/openclaw.plugin.json`
 - providers: `extensions/openai/openclaw.plugin.json`
 - memory: `extensions/memory-core/openclaw.plugin.json`
 
-Static manifest responsibilities:
+정적 manifest의 책임:
 
 - plugin identity
-- capability declarations
+- capability 선언
 - config schema
-- auth choice metadata
-- UI hints
+- auth choice 메타데이터
+- UI hint
 
-The static layer exists so discovery and validation can happen before executing plugin code.
+이 정적 계층 덕분에 plugin 코드를 실행하기 전에 discovery와 validation을 수행할 수 있습니다.
 
-### 7.2 Runtime Registration Layer
+### 7.2 런타임 registration 계층
 
-The runtime registration API is defined in:
+런타임 registration API는 다음에 정의돼 있습니다.
 
 - `src/plugins/types.ts:1314`
   `OpenClawPluginApi`
 
-Main registration methods:
+주요 registration 메서드:
 
 - `registerTool`
 - `registerHook`
@@ -312,29 +312,29 @@ Main registration methods:
 - `registerContextEngine`
 - `registerMemoryPromptSection`
 
-This is the real extensibility contract.
+이것이 실제 확장성 contract입니다.
 
-### 7.3 Loader Pipeline
+### 7.3 Loader 파이프라인
 
-Main loader:
+메인 loader:
 
 - `src/plugins/loader.ts`
 
-Important responsibilities:
+핵심 책임:
 
-- normalize plugin config
-- resolve roots and cache key
-- discover candidate plugins
-- load manifest registry
-- build registry
-- import plugin modules
-- call `register(api)` or `activate`
-- activate the resulting registry globally
+- plugin config normalize
+- root 및 cache key 해석
+- plugin 후보 discovery
+- manifest registry 로드
+- registry 구성
+- plugin module import
+- `register(api)` 또는 `activate` 호출
+- 결과 registry를 글로벌하게 활성화
 
-Useful anchors:
+중요 anchor:
 
 - `src/plugins/loader.ts:689`
-  cache key build and activation mode logic
+  cache key 생성 및 activation mode 로직
 - `src/plugins/loader.ts:821`
   `createPluginRegistry(...)`
 - `src/plugins/loader.ts:828`
@@ -342,16 +342,16 @@ Useful anchors:
 - `src/plugins/loader.ts:834`
   manifest registry load
 - `src/plugins/loader.ts:1276`
-  activate active registry
+  active registry 활성화
 
-### 7.4 Registry Construction
+### 7.4 Registry 구성
 
-Registry construction lives in:
+registry 구성은 다음 파일에 있습니다.
 
 - `src/plugins/registry.ts:247`
   `createPluginRegistry(...)`
 
-The registry records:
+registry가 기록하는 항목:
 
 - plugins
 - tools
@@ -372,16 +372,16 @@ The registry records:
 - conversation-binding handlers
 - diagnostics
 
-This is the closest thing to a framework kernel object in the repo.
+이 객체가 이 저장소에서 framework kernel 객체에 가장 가까운 형태입니다.
 
-### 7.5 Runtime Surface
+### 7.5 Runtime surface
 
-Plugin runtime is created by:
+plugin runtime은 다음에서 생성됩니다.
 
 - `src/plugins/runtime/index.ts:184`
   `createPluginRuntime()`
 
-It exposes runtime helpers for:
+이 runtime이 노출하는 helper는 다음과 같습니다.
 
 - config
 - agent
@@ -395,41 +395,41 @@ It exposes runtime helpers for:
 - events
 - logging
 - state
-- lazily bound TTS, STT, media-understanding, model-auth
+- lazy binding되는 TTS, STT, media-understanding, model-auth
 
-Important design choice:
+중요한 설계 선택:
 
-- plugin registration and plugin runtime are separate concerns
-- static manifest discovery happens before runtime import
-- runtime methods are late-bound and partially lazy
+- plugin registration과 plugin runtime은 서로 다른 관심사입니다
+- 정적 manifest discovery는 runtime import보다 먼저 일어납니다
+- runtime 메서드는 late-bound이며 일부는 lazy입니다
 
-### 7.6 Active Runtime State
+### 7.6 Active runtime state
 
-Active plugin registry global state is in:
+active plugin registry의 글로벌 상태는 다음 파일에 있습니다.
 
 - `src/plugins/runtime.ts`
 
-This file manages:
+이 파일은 다음을 관리합니다.
 
 - active plugin registry
 - pinned HTTP route registry
-- registry key and version
+- registry key와 version
 
-Framework extraction note:
+framework extraction 관점 메모:
 
-- the global singleton registry is convenient
-- but it is also one of the key coupling points you would likely abstract behind a container or runtime context in a new framework
+- 글로벌 singleton registry는 편리합니다
+- 하지만 새 framework에서는 container나 runtime context 뒤로 추상화하고 싶어질 가능성이 큰 핵심 결합 지점이기도 합니다
 
-## 8. Channel Architecture
+## 8. Channel 아키텍처
 
-### 8.1 Channel Contract
+### 8.1 Channel contract
 
-Channel plugin type:
+channel plugin 타입:
 
 - `src/channels/plugins/types.plugin.ts:55`
   `ChannelPlugin`
 
-A channel can own:
+하나의 channel이 소유할 수 있는 것:
 
 - config
 - setup
@@ -457,180 +457,180 @@ A channel can own:
 - heartbeat
 - agent tools
 
-This is a very rich channel contract.
+이 contract는 매우 넓고 풍부합니다.
 
-### 8.2 Bundled Channels
+### 8.2 Bundled channels
 
-Official bundled channels are statically imported in:
+공식 bundled channel은 다음 파일에서 정적으로 import됩니다.
 
 - `src/channels/plugins/bundled.ts`
 
-This file exposes:
+이 파일이 노출하는 것:
 
 - `bundledChannelPlugins`
 - `bundledChannelSetupPlugins`
 - `getBundledChannelPlugin()`
-- runtime setters for selected channels
+- 일부 channel에 대한 runtime setter
 
-Observed from manifests:
+manifest 기준 관찰:
 
-- about 21 plugins declare channel capabilities
+- 약 21개의 plugin이 channel capability를 선언하고 있습니다
 
-Important architectural implication:
+중요한 아키텍처적 함의:
 
-- official channels are implemented as workspace plugins
-- but core still knows about official bundled channel entrypoints
-- this is a hybrid between pure plugin architecture and curated first-party platform
+- 공식 channel은 workspace plugin으로 구현됩니다
+- 하지만 core는 여전히 공식 bundled channel entrypoint를 직접 알고 있습니다
+- 즉, 순수 plugin architecture와 curated first-party platform 사이의 하이브리드 구조입니다
 
-### 8.3 Shared Message Tool Boundary
+### 8.3 공유 message tool 경계
 
-From the public plugin architecture docs and current code layout:
+공개 plugin architecture 문서와 현재 코드 배치를 보면:
 
-- core owns shared message-tool orchestration
-- channel plugins own channel-specific discovery and execution
+- core가 공유 message-tool orchestration을 소유합니다
+- channel plugin은 channel별 discovery와 execution을 소유합니다
 
-This is a strong framework pattern:
+이건 framework 관점에서 꽤 강한 패턴입니다.
 
-- central action host
-- capability-specific adapters
-- domain plugins contribute behavior without owning the entire outer orchestration
+- 중앙 action host
+- capability별 adapter
+- domain plugin은 바깥 orchestration 전체를 소유하지 않고도 자신의 동작을 기여
 
-## 9. Agent Runtime Architecture
+## 9. Agent Runtime 아키텍처
 
-This is the largest subsystem in the repo.
+이 영역은 저장소에서 가장 큰 서브시스템입니다.
 
-### 9.1 Center of Agent Execution
+### 9.1 Agent execution의 중심
 
-Main embedded agent loop:
+메인 embedded agent loop:
 
 - `src/agents/pi-embedded-runner/run.ts`
 
-That file depends on:
+이 파일이 의존하는 것:
 
-- context engine initialization
+- context engine 초기화
 - plugin hook runner
 - provider runtime auth
-- auth-profile selection and cooldown
+- auth-profile 선택 및 cooldown
 - model resolution
 - failover policy
 - usage accounting
-- lane-based command queueing
-- prompt payload building
-- compaction and transcript maintenance
+- lane 기반 command queueing
+- prompt payload 빌드
+- compaction 및 transcript maintenance
 
-This is not a thin wrapper around an LLM SDK.
-It is a policy-heavy execution runtime.
+즉, 이건 단순한 LLM SDK wrapper가 아닙니다.
+정책이 매우 많이 들어간 execution runtime입니다.
 
-### 9.2 What the Agent Layer Owns
+### 9.2 Agent 계층이 소유하는 것
 
-The `src/agents/` tree owns:
+`src/agents/` 트리가 소유하는 관심사는 다음과 같습니다.
 
-- model auth and profile rotation
-- tool surfaces
-- sandbox and process tools
-- session and workspace semantics
+- model auth와 profile rotation
+- tool surface
+- sandbox와 process tool
+- session 및 workspace semantics
 - skill loading
 - embedded Pi integration
-- failover and retry policy
+- failover와 retry policy
 - usage tracking
-- transcript and compaction policy
+- transcript와 compaction policy
 
-Sub-area hotspots:
+핫스팟 하위 영역:
 
 - `src/agents/pi-embedded-runner`
 - `src/agents/tools`
 - `src/agents/sandbox`
 - `src/agents/auth-profiles`
 
-Framework extraction note:
+framework extraction 관점 메모:
 
-- the agent layer mixes generic agent-runtime concerns with OpenClaw-specific session and messaging semantics
-- separating those would be a prime redesign target
+- agent 계층은 범용 agent-runtime concern과 OpenClaw 전용 session/messaging semantics를 섞고 있습니다
+- 새 설계에서 이 둘을 분리하는 것이 가장 유력한 재설계 대상입니다
 
-## 10. Memory and Context Architecture
+## 10. Memory 및 Context 아키텍처
 
-### 10.1 Memory Index Manager
+### 10.1 Memory index manager
 
-Main memory orchestrator:
+메인 memory orchestrator:
 
 - `src/memory/manager.ts`
 
-The memory layer owns:
+memory 계층이 소유하는 것:
 
-- embedding provider creation
-- vector and FTS search
+- embedding provider 생성
+- vector 및 FTS search
 - hybrid rank merge
-- watch and sync behavior
-- per-agent memory index manager caching
+- watch 및 sync 동작
+- agent별 memory index manager cache
 - read-only recovery
 - session file ingestion
 
-Memory is not a trivial feature.
-It is a long-lived indexed retrieval subsystem.
+memory는 사소한 기능이 아닙니다.
+장시간 살아 있는 indexed retrieval 서브시스템입니다.
 
-### 10.2 Context Engine
+### 10.2 Context engine
 
-Context engine contract lives in:
+context engine contract는 다음에 있습니다.
 
 - `src/context-engine/types.ts`
 - `src/context-engine/registry.ts`
 
-The context engine is treated as an exclusive slot.
-Plugins can register a context engine via `registerContextEngine(...)`.
+context engine은 exclusive slot으로 취급됩니다.
+plugin은 `registerContextEngine(...)` 을 통해 context engine을 등록할 수 있습니다.
 
-Framework extraction note:
+framework extraction 관점 메모:
 
-- this is a good example of an exclusive capability, not a many-provider capability
-- the platform already distinguishes shared contracts from exclusive slots
+- 이것은 many-provider capability가 아니라 exclusive capability의 좋은 예시입니다
+- 이 플랫폼은 이미 공유 contract와 exclusive slot을 구분하고 있습니다
 
-## 11. ACP and Control Plane Extensions
+## 11. ACP와 Control Plane 확장
 
-ACP lives under:
+ACP는 다음 경로에 있습니다.
 
 - `src/acp/`
 
-It includes:
+포함되는 내용:
 
 - runtime registry
 - control-plane manager
 - session mapping
-- translation and policy
-- persistent bindings
+- translation 및 policy
+- persistent binding
 
-This is another sign that OpenClaw is more of an agent platform than a simple chat gateway.
+이 역시 OpenClaw이 단순한 chat gateway보다 agent platform에 더 가깝다는 강한 신호입니다.
 
-## 12. UI and Native Shells
+## 12. UI와 네이티브 셸
 
-### 12.1 Browser Control UI
+### 12.1 브라우저 Control UI
 
-Browser UI lives in:
+브라우저 UI는 다음 경로에 있습니다.
 
 - `ui/src/ui/controllers`
 - `ui/src/ui/views`
 - `ui/src/ui/components`
 
-The browser UI is a separate Vite project with its own Vitest configuration.
-This is an outer shell, not the source of business logic.
+브라우저 UI는 자체 Vite 프로젝트와 별도 Vitest 설정을 가진 독립 셸입니다.
+비즈니스 로직의 근원이라기보다 외곽 surface에 가깝습니다.
 
-### 12.2 Native Apps
+### 12.2 네이티브 앱
 
-Native shells:
+네이티브 셸:
 
 - `apps/macos`
 - `apps/ios`
 - `apps/android`
 
-Observed structure:
+관찰되는 구조:
 
-- macOS contains app, IPC, discovery, CLI bridge, and protocol modules
-- iOS contains gateway, onboarding, chat, media, status, voice, settings, and device areas
-- Android follows the expected app shell layout
+- macOS는 app, IPC, discovery, CLI bridge, protocol 모듈을 포함
+- iOS는 gateway, onboarding, chat, media, status, voice, settings, device 영역을 포함
+- Android는 예상 가능한 app shell 레이아웃을 따름
 
-Architecturally, these appear to be shells over the Gateway and control plane rather than separate backends.
+아키텍처 관점에서 보면 이들은 별도 백엔드라기보다 Gateway 및 control plane 위의 셸로 보입니다.
 
-## 13. Testing and Architectural Guardrails
+## 13. 테스트와 아키텍처 Guardrail
 
-Key files:
+핵심 파일:
 
 - `vitest.config.ts`
 - `vitest.unit.config.ts`
@@ -640,42 +640,42 @@ Key files:
 - `test/extension-plugin-sdk-boundary.test.ts`
 - `test/official-channel-catalog.test.ts`
 
-Important observation from `vitest.config.ts`:
+`vitest.config.ts` 에서 중요한 관찰:
 
-- many integration-heavy areas are intentionally excluded from strict core coverage accounting
-- large surfaces such as `src/gateway/**`, `src/agents/**`, `src/channels/**`, `src/plugins/**`, `src/cli/**`, and `src/commands/**` are validated more by targeted tests, contract tests, and integration coverage than by raw percentage
+- integration 비중이 높은 영역이 엄격한 core coverage 집계에서 의도적으로 제외돼 있습니다
+- `src/gateway/**`, `src/agents/**`, `src/channels/**`, `src/plugins/**`, `src/cli/**`, `src/commands/**` 같은 큰 surface는 raw percentage보다 targeted test, contract test, integration coverage로 더 많이 검증됩니다
 
-Important observation from guardrail tests:
+guardrail 테스트에서 중요한 관찰:
 
-- the repo explicitly tests architectural smells and import boundaries
-- this means architecture is not only documented, it is partially enforced
+- 이 저장소는 architectural smell과 import boundary를 명시적으로 테스트합니다
+- 즉, 아키텍처가 문서화만 돼 있는 것이 아니라 일부는 강제되고 있습니다
 
-Framework extraction note:
+framework extraction 관점 메모:
 
-- keep these guardrail tests
-- they are valuable design constraints, not test noise
+- 이런 guardrail 테스트는 유지하는 편이 좋습니다
+- 테스트 잡음이 아니라 설계 제약으로서 가치가 큽니다
 
-## 14. Extension Landscape
+## 14. Extension 지형도
 
-Observed capability counts from manifests:
+manifest 기준 capability 수:
 
-- channel plugins: about 21
-- provider plugins: about 36
-- memory plugins: 2
+- channel plugins: 약 21개
+- provider plugins: 약 36개
+- memory plugins: 2개
 
-There are also hybrid and feature plugins covering:
+그 외에도 다음을 다루는 hybrid 및 feature plugin이 있습니다.
 
 - web search
 - diagnostics
 - device pairing
 - thread ownership
 - voice/call behavior
-- tool bundles
+- tool bundle
 
-Examples:
+예시:
 
 - `extensions/openai`
-  provider ownership, auth choices
+  provider ownership, auth choice
 - `extensions/google`
   multi-capability vendor plugin
 - `extensions/telegram`
@@ -685,144 +685,144 @@ Examples:
 - `extensions/duckduckgo`
   web-search plugin
 - `extensions/voice-call`
-  feature plugin that also registers gateway methods
+  gateway method까지 등록하는 feature plugin
 
-This is a healthy clue for framework design:
+framework 설계 관점에서 이건 꽤 좋은 신호입니다.
 
-- vendor plugins
-- channel plugins
-- feature plugins
-- exclusive-slot plugins
+- vendor plugin
+- channel plugin
+- feature plugin
+- exclusive-slot plugin
 
-These should probably be explicit framework concepts, not just emergent conventions.
+이 구분은 단순한 관습이 아니라 framework 개념으로 명시하는 편이 좋습니다.
 
-## 15. Likely Kernel vs Product Split
+## 15. Kernel과 Product의 분리 후보
 
-If extracting a framework, a useful split would be:
+framework를 추출한다면 다음과 같은 분리가 유용할 가능성이 높습니다.
 
-### Framework Kernel Candidates
+### Framework kernel 후보
 
 - control-plane request bus
 - method registry
-- plugin discovery and registration
-- capability contracts
-- runtime container and scoped context
-- long-lived execution runtime
-- state and lifecycle services
+- plugin discovery 및 registration
+- capability contract
+- runtime container 및 scoped context
+- 장시간 살아 있는 execution runtime
+- state 및 lifecycle service
 - event bus
 
-### Product-Specific Layers
+### Product 전용 계층
 
 - channel semantics
-- OpenClaw session-key conventions
+- OpenClaw session-key convention
 - OpenClaw command UX
-- vendor/provider implementations
-- app-specific UI and client shells
-- docs and release process
+- vendor/provider implementation
+- 앱 전용 UI 및 client shell
+- 문서와 release process
 
-## 16. Architectural Strengths
+## 16. 아키텍처 강점
 
-Strong patterns already present in the repo:
+이미 저장소 안에 존재하는 강한 패턴:
 
-- manifest-first discovery before runtime import
-- explicit plugin ownership boundaries
+- runtime import 이전의 manifest-first discovery
+- 명시적인 plugin ownership 경계
 - typed capability registration
-- request handler modularity
-- late-bound runtime helpers
-- clear distinction between shared contracts and vendor-specific behavior
-- strong test guardrails for import boundaries
+- request handler의 모듈성
+- late-bound runtime helper
+- 공유 contract와 vendor-specific behavior의 명확한 구분
+- import boundary를 지키기 위한 강한 테스트 guardrail
 
-These are good ingredients for a reusable framework.
+이것들은 재사용 가능한 framework를 만드는 데 좋은 재료입니다.
 
-## 17. Architectural Tensions
+## 17. 아키텍처 긴장 지점
 
-Likely complexity hotspots:
+복잡도가 몰려 있을 가능성이 높은 지점:
 
-- global singleton runtime state in several places
-- Gateway startup owns too many responsibilities
-- agent runtime mixes generic execution with product-specific session behavior
-- channel contract is powerful but broad
-- command layer, gateway layer, and plugin layer all expose adjacent control surfaces
-- first-party bundled plugins blur the line between core and external extension
+- 여러 곳의 global singleton runtime state
+- 너무 많은 책임을 가진 Gateway startup
+- 범용 execution과 제품 전용 session behavior가 섞인 agent runtime
+- 강력하지만 범위가 넓은 channel contract
+- command 계층, gateway 계층, plugin 계층이 서로 인접한 control surface를 동시에 노출
+- core와 외부 extension의 경계를 흐리게 하는 first-party bundled plugin
 
-These are not bugs.
-They are the normal result of product growth.
-But they are the seams you would revisit when extracting a framework.
+이것들은 버그가 아닙니다.
+제품이 성장하면서 자연스럽게 생기는 결과입니다.
+다만 framework를 추출한다면 가장 먼저 다시 볼 seam이기도 합니다.
 
-## 18. Recommended Reading Order for Framework Design
+## 18. Framework 설계를 위한 권장 읽기 순서
 
-Read these in order.
-Each file gives a specific architectural answer.
+아래 순서대로 읽는 것을 권장합니다.
+각 파일은 하나의 구체적인 아키텍처 질문에 답합니다.
 
 1. `ARCHITECTURE_REVIEW_ABSTRACT.md`
-   What the repo is.
+   저장소가 무엇인지
 2. `src/plugins/types.ts`
-   What the platform lets extensions do.
+   플랫폼이 extension에게 무엇을 허용하는지
 3. `src/plugins/registry.ts`
-   How extensions become runtime-owned capabilities.
+   extension가 어떻게 runtime-owned capability가 되는지
 4. `src/plugins/loader.ts`
-   How static manifest, discovery, cache, and activation fit together.
+   static manifest, discovery, cache, activation이 어떻게 맞물리는지
 5. `src/plugins/runtime/index.ts`
-   What trusted runtime helpers are exposed.
+   trusted runtime helper가 무엇인지
 6. `src/channels/plugins/types.plugin.ts`
-   What a channel owns.
+   하나의 channel이 무엇을 소유하는지
 7. `src/gateway/server-methods.ts`
-   What the control plane exposes.
+   control plane이 무엇을 노출하는지
 8. `src/gateway/server.impl.ts`
-   What the runtime kernel starts and owns.
+   runtime kernel이 무엇을 시작하고 소유하는지
 9. `src/agents/pi-embedded-runner/run.ts`
-   How the execution runtime behaves under real policy pressure.
+   execution runtime이 실제 정책 압력 아래에서 어떻게 동작하는지
 10. `src/memory/manager.ts`
-    How long-lived indexed state is managed.
+    장시간 유지되는 indexed state를 어떻게 관리하는지
 11. `src/context-engine/registry.ts`
-    How exclusive slots differ from shared capability registration.
+    exclusive slot이 공유 capability registration과 어떻게 다른지
 12. `src/cli/run-main.ts`
-    How shells enter the system.
+    셸이 시스템으로 어떻게 진입하는지
 13. `src/commands/*`
-    How product UX is layered over the runtime.
+    제품 UX가 런타임 위에 어떻게 얹히는지
 
-## 19. Suggested Framework Design Extraction
+## 19. 제안하는 Framework 추출 방향
 
-A plausible extracted architecture would look like:
+추출된 아키텍처는 대략 다음처럼 생길 가능성이 높습니다.
 
 1. `kernel`
    runtime container, scoped context, lifecycle, event bus
 2. `control-plane`
-   transport adapters plus method registry
+   transport adapter + method registry
 3. `capabilities`
-   shared contracts for provider, channel, memory, search, media, execution
+   provider, channel, memory, search, media, execution에 대한 공유 contract
 4. `extensions`
    manifest, discovery, loader, registry, activation
 5. `execution`
-   agent runtime, retries, failover, tool system, compaction
+   agent runtime, retry, failover, tool system, compaction
 6. `state`
    config, session storage, approvals, persistence
 7. `surfaces`
    CLI, web UI, mobile, desktop
 8. `products`
-   channel and vendor implementations
+   channel 및 vendor implementation
 
-OpenClaw already contains most of these pieces.
-The current challenge is not invention.
-The challenge is separation and naming.
+OpenClaw 안에는 이미 이 구성 요소 대부분이 들어 있습니다.
+지금의 문제는 발명이 아닙니다.
+분리와 이름 짓기입니다.
 
-## 20. Final Takeaway
+## 20. 최종 요약
 
-OpenClaw is structurally closest to a plugin-centered agent platform with a Gateway kernel.
+OpenClaw은 구조적으로 볼 때 Gateway kernel을 중심으로 한 plugin 중심 agent platform에 가장 가깝습니다.
 
-If you review it as:
+이 저장소를 다음처럼 리뷰하면:
 
-- "a CLI app"
-- or "a chat bot"
-- or "a thin wrapper around model providers"
+- "CLI 앱"
+- 또는 "챗봇"
+- 또는 "모델 provider를 감싼 얇은 wrapper"
 
-you will underestimate the real architecture.
+실제 아키텍처를 크게 과소평가하게 됩니다.
 
-If you review it as:
+반대로 다음처럼 보면:
 
-- a control-plane kernel
-- plus a capability registry
-- plus an embedded execution runtime
-- plus many product adapters
+- control-plane kernel
+- 여기에 capability registry가 붙고
+- 여기에 embedded execution runtime이 붙고
+- 그 위에 많은 product adapter가 올라간 구조
 
-the repo starts to make sense very quickly.
+저장소 구조가 훨씬 빠르게 이해되기 시작합니다.
